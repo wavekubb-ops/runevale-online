@@ -72,7 +72,7 @@ io.on("connection", socket => {
     if (!p) return;
     const list = spawnMonsters(p.zone);
     const m = list.find(x => x.id === monsterId);
-    if (!m || m.hp <= 0) return;
+    if (!m || m.hp <= 0) return;\n    p.action = "attack"; p.actionAt = Date.now();\n    sendZone(p.zone);
     m.hp = Math.max(0, m.hp - 10);
     if (m.hp === 0) {
       p.level += 1;
