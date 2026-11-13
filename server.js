@@ -83,6 +83,7 @@ io.on("connection", socket => {
     m.hp = Math.max(0, m.hp - 10);
     if (m.hp === 0) {
       p.level += 1;
+      p.skillPoints = (p.skillPoints || 0) + 1;
       p.hp = 100;
       io.to(p.zone).emit("chat", { system: true, text: p.name + " กำจัด " + m.name + " ได้รับ EXP! (เลเวล " + p.level + ")" });
       setTimeout(() => { m.hp = m.maxHp; sendZone(p.zone); }, 8000);
@@ -134,6 +135,7 @@ io.on("connection", socket => {
     sendZone(p.zone);
     if (target.hp === 0) {
       p.level += 1;
+      p.skillPoints = (p.skillPoints || 0) + 1;
       p.hp = 100;
       io.to(p.zone).emit("chat", { system: true, text: p.name + " กำจัด " + target.name + " ได้รับ EXP! (เลเวล " + p.level + ")" });
       setTimeout(() => {
