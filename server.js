@@ -25,7 +25,7 @@ function spawnMonsters(zone) {
   return monsters.get(zone);
 }
 function publicPlayer(p) {
-  return { id: p.id, name: p.name, zone: p.zone, x: p.x, y: p.y, hp: p.hp, mp: p.mp, level: p.level, job: p.job, effect: p.effect || null, effectAt: p.effectAt || 0, direction: p.direction || 0, action: p.action || "idle", actionAt: p.actionAt || 0 };
+  return { id: p.id, name: p.name, zone: p.zone, x: p.x, y: p.y, hp: p.hp, mp: p.mp, level: p.level, job: p.job, skillPoints: p.skillPoints || 0, skillLevels: p.skillLevels || {}, effect: p.effect || null, effectAt: p.effectAt || 0, direction: p.direction || 0, action: p.action || "idle", actionAt: p.actionAt || 0 };
 }
 function sendZone(zone) {
   io.to(zone).emit("world", {
@@ -40,7 +40,7 @@ io.on("connection", socket => {
     const name = String(payload.name || "Novice").replace(/[^a-zA-Z0-9ก-๙_ -]/g, "").trim().slice(0, 16) || "Novice";
     const allowedJobs = ["Novice", "Knight", "Wizard", "Hunter", "Assassin"];
     const job = allowedJobs.includes(payload.job) ? payload.job : "Novice";
-    const p = { id: socket.id, name, zone: "Prontera", x: 390, y: 280, hp: 100, mp: 100, level: 1, job, effect: null, effectAt: 0, lastSkillAt: 0, direction: 0, action: "idle", actionAt: Date.now() };
+    const p = { id: socket.id, name, zone: "Prontera", x: 390, y: 280, hp: 100, mp: 100, level: 1, job, skillPoints: 0, skillLevels: job === "Knight" ? { bash: 1 } : job === "Wizard" ? { firebolt: 1 } : job === "Hunter" ? { "double-strafe": 1 } : job === "Assassin" ? { "sonic-blow": 1 } : {}, effect: null, effectAt: 0, lastSkillAt: 0, direction: 0, action: "idle", actionAt: Date.now() };
     players.set(socket.id, p);
     socket.join(p.zone);
     socket.emit("joined", { player: publicPlayer(p), zones });
@@ -127,7 +127,7 @@ io.on("connection", socket => {
     p.actionAt = now;
     p.effect = skill.effect;
     p.effectAt = now;
-    const damage = skill.damage * (skill.hits || 1);
+    const skillLevel = Math.max(1, Math.min(5, Number((p.skillLevels || {})[skill.key]) || 1));\n    const damage = (skill.damage + (skillLevel - 1) * skill.perLevel) * (skill.hits || 1);
     target.hp = Math.max(0, target.hp - damage);
     socket.emit("skillResult", { ok: true, name: skill.name, damage, mp: p.mp });
     io.to(p.zone).emit("chat", { system: true, text: p.name + " ใช้ " + skill.name + " ใส่ " + target.name + " สร้างความเสียหาย " + damage });
@@ -141,6 +141,32 @@ io.on("connection", socket => {
         sendZone(p.zone);
       }, 8000);
     }
+  });
+
+
+  socket.on("upgradeSkill", skillKey => {
+    const p = players.get(socket.id);
+    if (!p) return;
+    const classSkill = { Knight: "bash", Wizard: "firebolt", Hunter: "double-strafe", Assassin: "sonic-blow" }[p.job];
+    if (!classSkill || skillKey !== classSkill) {
+      socket.emit("skillUpgradeResult", { ok: false, message: "สกิลนี้ไม่ใช่ของอาชีพคุณ" });
+      return;
+    }
+    p.skillLevels = p.skillLevels || {};
+    const current = Math.max(1, Number(p.skillLevels[skillKey]) || 1);
+    if (current >= 5) {
+      socket.emit("skillUpgradeResult", { ok: false, message: "สกิลถึงเลเวลสูงสุดแล้ว" });
+      return;
+    }
+    if ((p.skillPoints || 0) < 1) {
+      socket.emit("skillUpgradeResult", { ok: false, message: "แต้มสกิลไม่เพียงพอ: กำจัดมอนสเตอร์เพื่อเลื่อนเลเวล" });
+      return;
+    }
+    p.skillPoints -= 1;
+    p.skillLevels[skillKey] = current + 1;
+    socket.emit("skillUpgradeResult", { ok: true, skillKey, level: current + 1, skillPoints: p.skillPoints });
+    io.to(p.zone).emit("chat", { system: true, text: p.name + " อัปเกรด " + skillKey + " เป็นเลเวล " + (current + 1) });
+    sendZone(p.zone);
   });
 
   socket.on("chat", raw => {
