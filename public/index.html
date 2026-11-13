@@ -28,7 +28,7 @@ const $=id=>document.getElementById(id),canvas=$("world"),ctx=canvas.getContext(
 socket.on("connect",()=>$("connect").textContent="เชื่อมต่อเซิร์ฟเวอร์แล้ว");
 socket.on("connect_error",()=>$("connect").textContent="เชื่อมต่อไม่สำเร็จ กำลังลองใหม่...");
 $("enter").onclick=()=>socket.emit("join",{name:$("name").value,job:$("job").value});
-socket.on("joined",data=>{me=data.player;zone=me.zone;$("game").hidden=false;$("login").hidden=true;$("zones").innerHTML="";data.zones.forEach(z=>{const b=document.createElement("button");b.textContent=z;b.className="zone";b.onclick=()=>socket.emit("travel",z);$("zones").appendChild(b)});draw()});
+socket.on("joined",data=>{me=data.player;zone=me.zone;const skLabel={Knight:"✨ Bash",Wizard:"🔥 Fire Bolt",Hunter:"🏹 Double Strafe",Assassin:"🗡 Sonic Blow"};$("skillBtn").textContent=skLabel[me.job]||"✨ ไม่มีสกิล";$("skillBtn").disabled=!skLabel[me.job];$("game").hidden=false;$("login").hidden=true;$("zones").innerHTML="";data.zones.forEach(z=>{const b=document.createElement("button");b.textContent=z;b.className="zone";b.onclick=()=>socket.emit("travel",z);$("zones").appendChild(b)});draw()});
 socket.on("travelled",d=>{zone=d.zone;walkUntil=0;attackUntil=0;$("status").textContent=zone});
 socket.on("world",d=>{world=d;if(me){const self=(d.players||[]).find(p=>p.id===me.id);if(self){me.x=self.x;me.y=self.y;me.hp=self.hp;me.mp=self.mp;me.level=self.level;me.direction=self.direction||0}}draw()});
 socket.on("skillResult",r=>{const line=document.createElement("div");line.textContent=r.ok?"✨ "+r.name+"! Damage "+r.damage+" • MP "+r.mp:"✦ "+r.message;$("messages").appendChild(line);$("messages").scrollTop=$("messages").scrollHeight});
