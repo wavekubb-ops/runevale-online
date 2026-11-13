@@ -50,6 +50,8 @@ io.on("connection", socket => {
     if (!p || !pos) return;
     p.x = Math.max(35, Math.min(765, Number(pos.x) || p.x));
     p.y = Math.max(65, Math.min(465, Number(pos.y) || p.y));
+    p.direction = [0,1,2,3].includes(Number(pos.direction)) ? Number(pos.direction) : p.direction;
+    p.action = "walk"; p.actionAt = Date.now();
     sendZone(p.zone);
   });
 
@@ -59,7 +61,7 @@ io.on("connection", socket => {
     const old = p.zone;
     socket.leave(old);
     p.zone = zone;
-    p.x = 390; p.y = 280;
+    p.x = 390; p.y = 280; p.action = "idle"; p.actionAt = Date.now();
     socket.join(zone);
     socket.emit("travelled", { zone });
     io.to(zone).emit("chat", { system: true, text: p.name + " เดินทางมาถึง " + zone });
@@ -72,7 +74,9 @@ io.on("connection", socket => {
     if (!p) return;
     const list = spawnMonsters(p.zone);
     const m = list.find(x => x.id === monsterId);
-    if (!m || m.hp <= 0) return;\n    p.action = "attack"; p.actionAt = Date.now();\n    sendZone(p.zone);
+    if (!m || m.hp <= 0) return;
+    p.action = "attack"; p.actionAt = Date.now();
+    sendZone(p.zone);
     m.hp = Math.max(0, m.hp - 10);
     if (m.hp === 0) {
       p.level += 1;
