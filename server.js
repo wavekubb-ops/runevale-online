@@ -36,8 +36,8 @@ function sendZone(zone) {
 
 io.on("connection", socket => {
   socket.on("join", rawName => {
-    const name = String(rawName || "Novice").replace(/[^a-zA-Z0-9ก-๙_ -]/g, "").trim().slice(0, 16) || "Novice";
-    const p = { id: socket.id, name, zone: "Prontera", x: 390, y: 280, hp: 100, level: 1, job: "Novice", direction: 0, action: "idle", actionAt: Date.now() };
+    const payload = rawName && typeof rawName === "object" ? rawName : { name: rawName, job: "Novice" };\n    const name = String(payload.name || "Novice").replace(/[^a-zA-Z0-9ก-๙_ -]/g, "").trim().slice(0, 16) || "Novice";\n    const allowedJobs = ["Novice", "Knight", "Wizard", "Hunter", "Assassin"];\n    const job = allowedJobs.includes(payload.job) ? payload.job : "Novice";
+    const p = { id: socket.id, name, zone: "Prontera", x: 390, y: 280, hp: 100, level: 1, job, direction: 0, action: "idle", actionAt: Date.now() };
     players.set(socket.id, p);
     socket.join(p.zone);
     socket.emit("joined", { player: publicPlayer(p), zones });
