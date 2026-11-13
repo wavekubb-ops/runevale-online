@@ -10,7 +10,7 @@
 <body>
 <header><h1>⚔ Runevale Online</h1><span class="muted">Multiplayer browser prototype</span></header>
 <main class="wrap">
-<section class="panel" id="login"><input id="name" maxlength="16" placeholder="ชื่อตัวละคร" value="Novice"><select id="job"><option value="Novice">Novice</option><option value="Knight">Knight</option><option value="Wizard">Wizard</option><option value="Hunter">Hunter</option><option value="Assassin">Assassin</option></select><button id="enter">เข้าโลก</button><span class="muted" id="connect">กำลังเชื่อมต่อ...</span></section>
+<section class="panel" id="login"><input id="username" maxlength="20" placeholder="Username (a-z, 0-9, _)"><input id="password" type="password" maxlength="72" placeholder="รหัสผ่าน (อย่างน้อย 6 ตัว)"><input id="name" maxlength="16" placeholder="ชื่อตัวละคร (บัญชีใหม่)" value="Novice"><select id="job"><option value="Novice">Novice</option><option value="Knight">Knight</option><option value="Wizard">Wizard</option><option value="Hunter">Hunter</option><option value="Assassin">Assassin</option></select><button id="enter">เข้าโลก</button><span class="muted" id="connect">กำลังเชื่อมต่อ...</span></section>
 <section class="panel" id="game" hidden>
 <div class="row" style="justify-content:space-between"><strong id="status">Prontera</strong><span class="muted" id="stats"></span></div>
 <div class="row" id="zones" style="margin:10px 0"></div>
@@ -27,7 +27,8 @@ const spriteSheets={};["Novice","Knight","Wizard","Hunter","Assassin"].forEach(j
 const $=id=>document.getElementById(id),canvas=$("world"),ctx=canvas.getContext("2d");
 socket.on("connect",()=>$("connect").textContent="เชื่อมต่อเซิร์ฟเวอร์แล้ว");
 socket.on("connect_error",()=>$("connect").textContent="เชื่อมต่อไม่สำเร็จ กำลังลองใหม่...");
-$("enter").onclick=()=>socket.emit("join",{name:$("name").value,job:$("job").value});
+$("enter").onclick=()=>socket.emit("join",{username:$("username").value,password:$("password").value,name:$("name").value,job:$("job").value});
+socket.on("joinError",r=>{$("connect").textContent="✦ "+(r.message||"เข้าสู่ระบบไม่สำเร็จ");});
 socket.on("joined",data=>{me=data.player;zone=me.zone;const skLabel={Knight:"✨ Bash",Wizard:"🔥 Fire Bolt",Hunter:"🏹 Double Strafe",Assassin:"🗡 Sonic Blow"};$("skillBtn").textContent=skLabel[me.job]||"✨ ไม่มีสกิล";$("skillBtn").disabled=!skLabel[me.job];renderSkillTree();$("game").hidden=false;$("login").hidden=true;$("zones").innerHTML="";data.zones.forEach(z=>{const b=document.createElement("button");b.textContent=z;b.className="zone";b.onclick=()=>socket.emit("travel",z);$("zones").appendChild(b)});draw()});
 socket.on("travelled",d=>{zone=d.zone;walkUntil=0;attackUntil=0;$("status").textContent=zone});
 socket.on("world",d=>{world=d;if(me){const self=(d.players||[]).find(p=>p.id===me.id);if(self){me.skillBranch=self.skillBranch||me.skillBranch;refreshSkillButton();me.x=self.x;me.y=self.y;me.hp=self.hp;me.mp=self.mp;me.level=self.level;me.skillPoints=self.skillPoints||0;me.skillLevels=self.skillLevels||{};me.direction=self.direction||0;renderSkillTree()}}draw()});
