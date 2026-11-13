@@ -14,6 +14,51 @@ const zones = ["Prontera", "Prontera Field", "Payon Forest", "Morroc Desert"];
 const players = new Map();
 const monsters = new Map();
 
+const { Pool } = require("pg");
+const bcrypt = require("bcryptjs");
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is required. Add your Render PostgreSQL Internal Database URL to the web service environment.");
+}
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL.includes("render.com") ? { rejectUnauthorized: false } : undefined
+});
+const dbReady = pool.query(`
+  CREATE TABLE IF NOT EXISTS characters (
+    username TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    name TEXT NOT NULL,
+    job TEXT NOT NULL DEFAULT 'Novice',
+    zone TEXT NOT NULL DEFAULT 'Prontera',
+    x REAL NOT NULL DEFAULT 390,
+    y REAL NOT NULL DEFAULT 280,
+    hp INTEGER NOT NULL DEFAULT 100,
+    mp INTEGER NOT NULL DEFAULT 100,
+    level INTEGER NOT NULL DEFAULT 1,
+    skill_points INTEGER NOT NULL DEFAULT 0,
+    skill_levels JSONB NOT NULL DEFAULT '{}'::jsonb,
+    skill_branch TEXT,
+    inventory JSONB NOT NULL DEFAULT '[]'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`);
+async function savePlayer(p) {
+  if (!p || !p.username || !p.passwordHash) return;
+  await dbReady;
+  await pool.query(`
+    INSERT INTO characters
+      (username,password_hash,name,job,zone,x,y,hp,mp,level,skill_points,skill_levels,skill_branch)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    ON CONFLICT (username) DO UPDATE SET
+      name=EXCLUDED.name, job=EXCLUDED.job, zone=EXCLUDED.zone,
+      x=EXCLUDED.x, y=EXCLUDED.y, hp=EXCLUDED.hp, mp=EXCLUDED.mp,
+      level=EXCLUDED.level, skill_points=EXCLUDED.skill_points,
+      skill_levels=EXCLUDED.skill_levels, skill_branch=EXCLUDED.skill_branch,
+      updated_at=NOW()
+  `, [p.username,p.passwordHash,p.name,p.job,p.zone,p.x,p.y,p.hp,p.mp,p.level,p.skillPoints||0,p.skillLevels||{},p.skillBranch||null]);
+}
+
+
 function spawnMonsters(zone) {
   if (!monsters.has(zone)) {
     monsters.set(zone, [
@@ -35,17 +80,53 @@ function sendZone(zone) {
 }
 
 io.on("connection", socket => {
-  socket.on("join", rawName => {
-    const payload = rawName && typeof rawName === "object" ? rawName : { name: rawName, job: "Novice" };
-    const name = String(payload.name || "Novice").replace(/[^a-zA-Z0-9ก-๙_ -]/g, "").trim().slice(0, 16) || "Novice";
-    const allowedJobs = ["Novice", "Knight", "Wizard", "Hunter", "Assassin"];
-    const job = allowedJobs.includes(payload.job) ? payload.job : "Novice";
-    const p = { id: socket.id, name, zone: "Prontera", x: 390, y: 280, hp: 100, mp: 100, level: 1, job, skillPoints: 0, skillLevels: job === "Knight" ? { bash: 1 } : job === "Wizard" ? { firebolt: 1 } : job === "Hunter" ? { "double-strafe": 1 } : job === "Assassin" ? { "sonic-blow": 1 } : {}, effect: null, effectAt: 0, lastSkillAt: 0, direction: 0, action: "idle", actionAt: Date.now() };
-    players.set(socket.id, p);
-    socket.join(p.zone);
-    socket.emit("joined", { player: publicPlayer(p), zones });
-    io.to(p.zone).emit("chat", { system: true, text: name + " เข้าสู่โลก Runevale" });
-    sendZone(p.zone);
+  socket.on("join", async payload => {
+    try {
+      await dbReady;
+      payload = payload && typeof payload === "object" ? payload : { name: payload };
+      const username = String(payload.username || "").trim().toLowerCase();
+      const password = String(payload.password || "");
+      if (!/^[a-z0-9_]{3,20}$/.test(username) || password.length < 6 || password.length > 72) {
+        socket.emit("joinError", { message: "กรุณาใช้ Username 3-20 ตัว (a-z, 0-9, _) และรหัสผ่านอย่างน้อย 6 ตัว" });
+        return;
+      }
+      const allowedJobs = ["Novice", "Knight", "Wizard", "Hunter", "Assassin"];
+      const requestedJob = allowedJobs.includes(payload.job) ? payload.job : "Novice";
+      let result = await pool.query("SELECT * FROM characters WHERE username = $1", [username]);
+      let row = result.rows[0];
+      if (row) {
+        const valid = await bcrypt.compare(password, row.password_hash);
+        if (!valid) {
+          socket.emit("joinError", { message: "Username นี้มีบัญชีแล้ว แต่รหัสผ่านไม่ถูกต้อง" });
+          return;
+        }
+      } else {
+        const name = String(payload.name || username).replace(/[^a-zA-Z0-9ก-๙_ -]/g, "").trim().slice(0, 16) || username;
+        const passwordHash = await bcrypt.hash(password, 12);
+        const initialSkills = requestedJob === "Knight" ? { bash: 1 } : requestedJob === "Wizard" ? { firebolt: 1 } : requestedJob === "Hunter" ? { "double-strafe": 1 } : requestedJob === "Assassin" ? { "sonic-blow": 1 } : {};
+        result = await pool.query(
+          "INSERT INTO characters (username,password_hash,name,job,skill_levels) VALUES ($1,$2,$3,$4,$5) RETURNING *",
+          [username,passwordHash,name,requestedJob,JSON.stringify(initialSkills)]
+        );
+        row = result.rows[0];
+      }
+      const p = {
+        id: socket.id, username, passwordHash: row.password_hash,
+        name: row.name, job: row.job, zone: zones.includes(row.zone) ? row.zone : "Prontera",
+        x: Number(row.x), y: Number(row.y), hp: row.hp, mp: row.mp, level: row.level,
+        skillPoints: row.skill_points || 0, skillLevels: row.skill_levels || {},
+        skillBranch: row.skill_branch || null, inventory: row.inventory || [],
+        effect: null, effectAt: 0, lastSkillAt: 0, direction: 0, action: "idle", actionAt: Date.now()
+      };
+      players.set(socket.id, p);
+      socket.join(p.zone);
+      socket.emit("joined", { player: publicPlayer(p), zones });
+      io.to(p.zone).emit("chat", { system: true, text: p.name + " เข้าสู่โลก Runevale" });
+      sendZone(p.zone);
+    } catch (err) {
+      console.error("Login/join failed:", err);
+      socket.emit("joinError", { message: "เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" });
+    }
   });
 
   socket.on("move", pos => {
@@ -192,13 +273,23 @@ io.on("connection", socket => {
     if (text) io.to(p.zone).emit("chat", { name: p.name, text });
   });
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", async () => {
     const p = players.get(socket.id);
     if (!p) return;
+    try { await savePlayer(p); } catch (err) { console.error("Character save failed:", err); }
     players.delete(socket.id);
     io.to(p.zone).emit("chat", { system: true, text: p.name + " ออกจากเกม" });
     sendZone(p.zone);
   });
 });
 
-server.listen(PORT, () => console.log("Runevale Online listening on " + PORT));
+setInterval(() => {
+  for (const p of players.values()) savePlayer(p).catch(err => console.error("Periodic save failed:", err));
+}, 15000);
+
+dbReady.then(() => {
+  server.listen(PORT, () => console.log("Runevale Online listening on " + PORT));
+}).catch(err => {
+  console.error("Database initialization failed:", err);
+  process.exit(1);
+});
