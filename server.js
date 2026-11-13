@@ -70,7 +70,7 @@ function spawnMonsters(zone) {
   return monsters.get(zone);
 }
 function publicPlayer(p) {
-  return { id: p.id, name: p.name, zone: p.zone, x: p.x, y: p.y, hp: p.hp, mp: p.mp, level: p.level, job: p.job, skillPoints: p.skillPoints || 0, skillLevels: p.skillLevels || {}, effect: p.effect || null, effectAt: p.effectAt || 0, direction: p.direction || 0, action: p.action || "idle", actionAt: p.actionAt || 0 };
+  return { id: p.id, name: p.name, zone: p.zone, x: p.x, y: p.y, hp: p.hp, mp: p.mp, level: p.level, job: p.job, skillPoints: p.skillPoints || 0, skillLevels: p.skillLevels || {}, skillBranch: p.skillBranch || null, inventory: p.inventory || [], effect: p.effect || null, effectAt: p.effectAt || 0, direction: p.direction || 0, action: p.action || "idle", actionAt: p.actionAt || 0 };
 }
 function sendZone(zone) {
   io.to(zone).emit("world", {
