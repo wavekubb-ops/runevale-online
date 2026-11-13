@@ -128,7 +128,8 @@ io.on("connection", socket => {
     p.actionAt = now;
     p.effect = skill.effect;
     p.effectAt = now;
-    const skillLevel = Math.max(1, Math.min(5, Number((p.skillLevels || {})[skill.key]) || 1));\n    const damage = (skill.damage + (skillLevel - 1) * skill.perLevel) * (skill.hits || 1);
+    const skillLevel = Math.max(1, Math.min(5, Number((p.skillLevels || {})[skill.key]) || 1));
+    const damage = (skill.damage + (skillLevel - 1) * (skill.perLevel || 0)) * (skill.hits || 1);
     target.hp = Math.max(0, target.hp - damage);
     socket.emit("skillResult", { ok: true, name: skill.name, damage, mp: p.mp });
     io.to(p.zone).emit("chat", { system: true, text: p.name + " ใช้ " + skill.name + " ใส่ " + target.name + " สร้างความเสียหาย " + damage });
