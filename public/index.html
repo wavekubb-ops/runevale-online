@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Runevale Online</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#171b2a;color:#f4e9ce;font-family:system-ui,-apple-system,sans-serif}header{padding:12px 16px;background:#282f45;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}h1{font-size:20px;margin:0;color:#f4cc78}.wrap{max-width:900px;margin:auto;padding:12px}.panel{background:#252c40;border:1px solid #48516a;border-radius:12px;padding:12px;margin-bottom:12px}button,input{font:inherit;border-radius:8px;border:1px solid #65708b;padding:9px;background:#343e58;color:white}button{background:#795b32;border-color:#c49a55;cursor:pointer}button:active{transform:scale(.98)}#login{display:flex;gap:8px;flex-wrap:wrap}#name{flex:1;min-width:130px}#world{display:block;width:100%;height:auto;aspect-ratio:800/500;background:#344c42;border:2px solid #b18b4c;border-radius:10px;touch-action:manipulation}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.muted{color:#b9c2d5;font-size:13px}#messages{height:130px;overflow:auto;background:#151b29;padding:8px;border-radius:8px;font-size:14px}#chatForm{display:flex;gap:8px;margin-top:8px}#chatInput{min-width:0;flex:1}.zone{background:#3a4662}#status{font-size:14px}
+*{box-sizing:border-box}body{margin:0;background:#171b2a;color:#f4e9ce;font-family:system-ui,-apple-system,sans-serif}header{padding:12px 16px;background:#282f45;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}h1{font-size:20px;margin:0;color:#f4cc78}.wrap{max-width:900px;margin:auto;padding:12px}.panel{background:#252c40;border:1px solid #48516a;border-radius:12px;padding:12px;margin-bottom:12px}button,input{font:inherit;border-radius:8px;border:1px solid #65708b;padding:9px;background:#343e58;color:white}button{background:#795b32;border-color:#c49a55;cursor:pointer}button:active{transform:scale(.98)}#login{display:flex;gap:8px;flex-wrap:wrap}#name{flex:1;min-width:130px}#world{display:block;width:100%;height:auto;aspect-ratio:800/500;background:#344c42;border:2px solid #b18b4c;border-radius:10px;touch-action:manipulation}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.muted{color:#b9c2d5;font-size:13px}#messages{height:130px;overflow:auto;background:#151b29;padding:8px;border-radius:8px;font-size:14px}#chatForm{display:flex;gap:8px;margin-top:8px}#chatInput{min-width:0;flex:1}.zone{background:#3a4662}#status{font-size:14px}#mobileControls{display:flex;justify-content:center;align-items:center;gap:14px;margin:14px 0 6px;flex-wrap:wrap}#mobileControls button{min-width:76px;min-height:62px;font-size:24px;font-weight:800;touch-action:none;user-select:none;-webkit-user-select:none}#mobileControls #attackBtn{min-width:118px;background:#9b452f;border-color:#f0a16b;font-size:19px}#mobileControls button:active{filter:brightness(1.25);transform:scale(.96)}
 </style>
 </head>
 <body>
@@ -14,28 +14,28 @@
 <section class="panel" id="game" hidden>
 <div class="row" style="justify-content:space-between"><strong id="status">Prontera</strong><span class="muted" id="stats"></span></div>
 <div class="row" id="zones" style="margin:10px 0"></div>
-<canvas id="world" width="800" height="500" aria-label="แผนที่เกม แตะตำแหน่งเพื่อเดิน"></canvas>
+<canvas id="world" width="800" height="500" aria-label="แผนที่เกม แตะตำแหน่งเพื่อเดิน"></canvas>\n<div id="mobileControls" aria-label="ปุ่มควบคุมตัวละคร"><button id="leftBtn" type="button" aria-label="เดินซ้าย">◀</button><button id="attackBtn" type="button">⚔ ตีมอน</button><button id="rightBtn" type="button" aria-label="เดินขวา">▶</button></div>
 <p class="muted">แตะพื้นแผนที่เพื่อเดิน • แตะมอนสเตอร์เพื่อโจมตี • ผู้เล่นในแผนที่เดียวกันจะมองเห็นกัน</p>
 </section>
 <section class="panel"><strong>แชทโลก / แผนที่</strong><div id="messages"></div><form id="chatForm"><input id="chatInput" placeholder="พิมพ์ข้อความ..." maxlength="180"><button>ส่ง</button></form></section>
 </main>
 <script src="/socket.io/socket.io.js"></script>
 <script>
-const socket=io();let me=null,world={players:[],monsters:[]},zone="Prontera";
+const socket=io();let me=null,world={players:[],monsters:[]},zone="Prontera",walkTimer=null;
 const $=id=>document.getElementById(id),canvas=$("world"),ctx=canvas.getContext("2d");
 socket.on("connect",()=>$("connect").textContent="เชื่อมต่อเซิร์ฟเวอร์แล้ว");
 socket.on("connect_error",()=>$("connect").textContent="เชื่อมต่อไม่สำเร็จ กำลังลองใหม่...");
 $("enter").onclick=()=>socket.emit("join",$("name").value);
 socket.on("joined",data=>{me=data.player;zone=me.zone;$("game").hidden=false;$("login").hidden=true;$("zones").innerHTML="";data.zones.forEach(z=>{const b=document.createElement("button");b.textContent=z;b.className="zone";b.onclick=()=>socket.emit("travel",z);$("zones").appendChild(b)});draw()});
 socket.on("travelled",d=>{zone=d.zone;$("status").textContent=zone});
-socket.on("world",d=>{world=d;draw()});
+socket.on("world",d=>{world=d;if(me){const self=(d.players||[]).find(p=>p.id===me.id);if(self){me.x=self.x;me.y=self.y;me.hp=self.hp;me.level=self.level}}draw()});
 socket.on("chat",m=>{const line=document.createElement("div");line.textContent=m.system?"✦ "+m.text:(m.name+": "+m.text);$("messages").appendChild(line);$("messages").scrollTop=$("messages").scrollHeight});
 function draw(){if(!me)return;ctx.clearRect(0,0,800,500);ctx.fillStyle=zone==="Prontera"?"#627c67":zone==="Morroc Desert"?"#ad8954":zone==="Payon Forest"?"#3d6651":"#4d745e";ctx.fillRect(0,0,800,500);ctx.strokeStyle="rgba(240,220,170,.14)";for(let x=0;x<800;x+=50){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,500);ctx.stroke()}for(let y=0;y<500;y+=50){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(800,y);ctx.stroke()}
 ctx.fillStyle="#d9c18a";ctx.font="bold 20px system-ui";ctx.fillText(zone,18,30);
 (world.monsters||[]).forEach(m=>{ctx.fillStyle=m.hp>0?"#e58bb0":"#555";ctx.beginPath();ctx.arc(m.x,m.y,19,0,Math.PI*2);ctx.fill();ctx.fillStyle="#201b27";ctx.font="12px system-ui";ctx.textAlign="center";ctx.fillText(m.name,m.x,m.y-27);ctx.fillText(m.hp>0?m.hp+" HP":"กำลังเกิดใหม่",m.x,m.y+34)});
 (world.players||[]).forEach(p=>{ctx.fillStyle=p.id===me.id?"#f5d36c":"#8fc9f2";ctx.beginPath();ctx.arc(p.x,p.y,13,0,Math.PI*2);ctx.fill();ctx.fillStyle="white";ctx.font="13px system-ui";ctx.textAlign="center";ctx.fillText(p.name,p.x,p.y-20)});
 $("stats").textContent="Lv. "+me.level+" • "+me.job+" • HP "+me.hp}
-canvas.addEventListener("click",e=>{if(!me)return;const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)*800/r.width,y=(e.clientY-r.top)*500/r.height;const m=(world.monsters||[]).find(v=>Math.hypot(v.x-x,v.y-y)<30&&v.hp>0);if(m)socket.emit("attack",m.id);else socket.emit("move",{x,y});me.x=x;me.y=y;draw()});
+function moveSide(dir){if(!me)return;me.x=Math.max(35,Math.min(765,me.x+dir*24));socket.emit("move",{x:me.x,y:me.y});draw()}\nfunction startWalk(dir){stopWalk();moveSide(dir);walkTimer=setInterval(()=>moveSide(dir),150)}\nfunction stopWalk(){if(walkTimer){clearInterval(walkTimer);walkTimer=null}}\nfunction bindWalk(id,dir){const b=$(id);b.addEventListener("pointerdown",e=>{e.preventDefault();b.setPointerCapture(e.pointerId);startWalk(dir)});["pointerup","pointercancel","lostpointercapture"].forEach(ev=>b.addEventListener(ev,stopWalk));b.addEventListener("contextmenu",e=>e.preventDefault())}\nbindWalk("leftBtn",-1);bindWalk("rightBtn",1);\n$("attackBtn").addEventListener("click",()=>{if(!me)return;const target=(world.monsters||[]).filter(m=>m.hp>0).map(m=>({m,d:Math.hypot(m.x-me.x,m.y-me.y)})).sort((a,b)=>a.d-b.d)[0];if(target&&target.d<=110){socket.emit("attack",target.m.id)}else{const line=document.createElement("div");line.textContent="✦ ไม่มีมอนสเตอร์อยู่ใกล้พอให้โจมตี";$("messages").appendChild(line);$("messages").scrollTop=$("messages").scrollHeight}});\ncanvas.addEventListener("click",e=>{if(!me)return;const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)*800/r.width,y=(e.clientY-r.top)*500/r.height;const m=(world.monsters||[]).find(v=>Math.hypot(v.x-x,v.y-y)<30&&v.hp>0);if(m)socket.emit("attack",m.id);else socket.emit("move",{x,y});me.x=x;me.y=y;draw()});
 $("chatForm").onsubmit=e=>{e.preventDefault();const v=$("chatInput").value.trim();if(v)socket.emit("chat",v);$("chatInput").value=""};
 </script>
 </body></html>
