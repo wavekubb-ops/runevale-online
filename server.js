@@ -25,7 +25,7 @@ function spawnMonsters(zone) {
   return monsters.get(zone);
 }
 function publicPlayer(p) {
-  return { id: p.id, name: p.name, zone: p.zone, x: p.x, y: p.y, hp: p.hp, level: p.level, job: p.job, direction: p.direction || 0, action: p.action || "idle", actionAt: p.actionAt || 0 };
+  return { id: p.id, name: p.name, zone: p.zone, x: p.x, y: p.y, hp: p.hp, mp: p.mp, level: p.level, job: p.job, effect: p.effect || null, effectAt: p.effectAt || 0, direction: p.direction || 0, action: p.action || "idle", actionAt: p.actionAt || 0 };
 }
 function sendZone(zone) {
   io.to(zone).emit("world", {
@@ -36,8 +36,11 @@ function sendZone(zone) {
 
 io.on("connection", socket => {
   socket.on("join", rawName => {
-    const payload = rawName && typeof rawName === "object" ? rawName : { name: rawName, job: "Novice" };\n    const name = String(payload.name || "Novice").replace(/[^a-zA-Z0-9ก-๙_ -]/g, "").trim().slice(0, 16) || "Novice";\n    const allowedJobs = ["Novice", "Knight", "Wizard", "Hunter", "Assassin"];\n    const job = allowedJobs.includes(payload.job) ? payload.job : "Novice";
-    const p = { id: socket.id, name, zone: "Prontera", x: 390, y: 280, hp: 100, level: 1, job, direction: 0, action: "idle", actionAt: Date.now() };
+    const payload = rawName && typeof rawName === "object" ? rawName : { name: rawName, job: "Novice" };
+    const name = String(payload.name || "Novice").replace(/[^a-zA-Z0-9ก-๙_ -]/g, "").trim().slice(0, 16) || "Novice";
+    const allowedJobs = ["Novice", "Knight", "Wizard", "Hunter", "Assassin"];
+    const job = allowedJobs.includes(payload.job) ? payload.job : "Novice";
+    const p = { id: socket.id, name, zone: "Prontera", x: 390, y: 280, hp: 100, mp: 100, level: 1, job, effect: null, effectAt: 0, lastSkillAt: 0, direction: 0, action: "idle", actionAt: Date.now() };
     players.set(socket.id, p);
     socket.join(p.zone);
     socket.emit("joined", { player: publicPlayer(p), zones });
@@ -85,6 +88,59 @@ io.on("connection", socket => {
       setTimeout(() => { m.hp = m.maxHp; sendZone(p.zone); }, 8000);
     }
     sendZone(p.zone);
+  });
+
+
+  socket.on("skill", skillKey => {
+    const p = players.get(socket.id);
+    if (!p) return;
+    const skillBook = {
+      Knight: { key: "bash", name: "Bash", mp: 20, damage: 18, cooldown: 1800, range: 115, effect: "slash" },
+      Wizard: { key: "firebolt", name: "Fire Bolt", mp: 25, damage: 24, cooldown: 2200, range: 260, effect: "fire" },
+      Hunter: { key: "double-strafe", name: "Double Strafe", mp: 18, damage: 12, hits: 2, cooldown: 2000, range: 240, effect: "arrow" },
+      Assassin: { key: "sonic-blow", name: "Sonic Blow", mp: 30, damage: 32, cooldown: 2600, range: 105, effect: "sonic" }
+    };
+    const skill = skillBook[p.job];
+    if (!skill || skill.key !== skillKey) {
+      socket.emit("skillResult", { ok: false, message: "อาชีพนี้ไม่สามารถใช้สกิลดังกล่าวได้" });
+      return;
+    }
+    const now = Date.now();
+    if (now - p.lastSkillAt < skill.cooldown) {
+      socket.emit("skillResult", { ok: false, message: "สกิลกำลังรอคูลดาวน์" });
+      return;
+    }
+    if (p.mp < skill.mp) {
+      socket.emit("skillResult", { ok: false, message: "MP ไม่เพียงพอ" });
+      return;
+    }
+    const list = spawnMonsters(p.zone);
+    const target = list.filter(m => m.hp > 0 && Math.hypot(m.x - p.x, m.y - p.y) <= skill.range)
+      .sort((a, b) => Math.hypot(a.x-p.x,a.y-p.y) - Math.hypot(b.x-p.x,b.y-p.y))[0];
+    if (!target) {
+      socket.emit("skillResult", { ok: false, message: "ไม่มีมอนสเตอร์อยู่ในระยะสกิล" });
+      return;
+    }
+    p.mp -= skill.mp;
+    p.lastSkillAt = now;
+    p.action = "attack";
+    p.actionAt = now;
+    p.effect = skill.effect;
+    p.effectAt = now;
+    const damage = skill.damage * (skill.hits || 1);
+    target.hp = Math.max(0, target.hp - damage);
+    socket.emit("skillResult", { ok: true, name: skill.name, damage, mp: p.mp });
+    io.to(p.zone).emit("chat", { system: true, text: p.name + " ใช้ " + skill.name + " ใส่ " + target.name + " สร้างความเสียหาย " + damage });
+    sendZone(p.zone);
+    if (target.hp === 0) {
+      p.level += 1;
+      p.hp = 100;
+      io.to(p.zone).emit("chat", { system: true, text: p.name + " กำจัด " + target.name + " ได้รับ EXP! (เลเวล " + p.level + ")" });
+      setTimeout(() => {
+        target.hp = target.maxHp;
+        sendZone(p.zone);
+      }, 8000);
+    }
   });
 
   socket.on("chat", raw => {
