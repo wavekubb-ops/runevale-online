@@ -1,0 +1,102 @@
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+const PORT = process.env.PORT || 3000;
+
+app.use(express.static("public"));
+app.get("/health", (_req, res) => res.json({ ok: true, game: "Runevale Online" }));
+
+const zones = ["Prontera", "Prontera Field", "Payon Forest", "Morroc Desert"];
+const players = new Map();
+const monsters = new Map();
+
+function spawnMonsters(zone) {
+  if (!monsters.has(zone)) {
+    monsters.set(zone, [
+      { id: zone + "-p1", name: "Poring", x: 250, y: 210, hp: 30, maxHp: 30 },
+      { id: zone + "-p2", name: "Poring", x: 470, y: 330, hp: 30, maxHp: 30 },
+      { id: zone + "-l1", name: "Lunatic", x: 650, y: 190, hp: 55, maxHp: 55 }
+    ]);
+  }
+  return monsters.get(zone);
+}
+function publicPlayer(p) {
+  return { id: p.id, name: p.name, zone: p.zone, x: p.x, y: p.y, hp: p.hp, level: p.level, job: p.job };
+}
+function sendZone(zone) {
+  io.to(zone).emit("world", {
+    players: [...players.values()].filter(p => p.zone === zone).map(publicPlayer),
+    monsters: spawnMonsters(zone)
+  });
+}
+
+io.on("connection", socket => {
+  socket.on("join", rawName => {
+    const name = String(rawName || "Novice").replace(/[^a-zA-Z0-9ก-๙_ -]/g, "").trim().slice(0, 16) || "Novice";
+    const p = { id: socket.id, name, zone: "Prontera", x: 390, y: 280, hp: 100, level: 1, job: "Novice" };
+    players.set(socket.id, p);
+    socket.join(p.zone);
+    socket.emit("joined", { player: publicPlayer(p), zones });
+    io.to(p.zone).emit("chat", { system: true, text: name + " เข้าสู่โลก Runevale" });
+    sendZone(p.zone);
+  });
+
+  socket.on("move", pos => {
+    const p = players.get(socket.id);
+    if (!p || !pos) return;
+    p.x = Math.max(35, Math.min(765, Number(pos.x) || p.x));
+    p.y = Math.max(65, Math.min(465, Number(pos.y) || p.y));
+    sendZone(p.zone);
+  });
+
+  socket.on("travel", zone => {
+    const p = players.get(socket.id);
+    if (!p || !zones.includes(zone) || p.zone === zone) return;
+    const old = p.zone;
+    socket.leave(old);
+    p.zone = zone;
+    p.x = 390; p.y = 280;
+    socket.join(zone);
+    socket.emit("travelled", { zone });
+    io.to(zone).emit("chat", { system: true, text: p.name + " เดินทางมาถึง " + zone });
+    sendZone(old);
+    sendZone(zone);
+  });
+
+  socket.on("attack", monsterId => {
+    const p = players.get(socket.id);
+    if (!p) return;
+    const list = spawnMonsters(p.zone);
+    const m = list.find(x => x.id === monsterId);
+    if (!m || m.hp <= 0) return;
+    m.hp = Math.max(0, m.hp - 10);
+    if (m.hp === 0) {
+      p.level += 1;
+      p.hp = 100;
+      io.to(p.zone).emit("chat", { system: true, text: p.name + " กำจัด " + m.name + " ได้รับ EXP! (เลเวล " + p.level + ")" });
+      setTimeout(() => { m.hp = m.maxHp; sendZone(p.zone); }, 8000);
+    }
+    sendZone(p.zone);
+  });
+
+  socket.on("chat", raw => {
+    const p = players.get(socket.id);
+    if (!p) return;
+    const text = String(raw || "").trim().slice(0, 180);
+    if (text) io.to(p.zone).emit("chat", { name: p.name, text });
+  });
+
+  socket.on("disconnect", () => {
+    const p = players.get(socket.id);
+    if (!p) return;
+    players.delete(socket.id);
+    io.to(p.zone).emit("chat", { system: true, text: p.name + " ออกจากเกม" });
+    sendZone(p.zone);
+  });
+});
+
+server.listen(PORT, () => console.log("Runevale Online listening on " + PORT));
