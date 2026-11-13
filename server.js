@@ -25,7 +25,7 @@ function spawnMonsters(zone) {
   return monsters.get(zone);
 }
 function publicPlayer(p) {
-  return { id: p.id, name: p.name, zone: p.zone, x: p.x, y: p.y, hp: p.hp, level: p.level, job: p.job };
+  return { id: p.id, name: p.name, zone: p.zone, x: p.x, y: p.y, hp: p.hp, level: p.level, job: p.job, direction: p.direction || 0, action: p.action || "idle", actionAt: p.actionAt || 0 };
 }
 function sendZone(zone) {
   io.to(zone).emit("world", {
@@ -37,7 +37,7 @@ function sendZone(zone) {
 io.on("connection", socket => {
   socket.on("join", rawName => {
     const name = String(rawName || "Novice").replace(/[^a-zA-Z0-9ก-๙_ -]/g, "").trim().slice(0, 16) || "Novice";
-    const p = { id: socket.id, name, zone: "Prontera", x: 390, y: 280, hp: 100, level: 1, job: "Novice" };
+    const p = { id: socket.id, name, zone: "Prontera", x: 390, y: 280, hp: 100, level: 1, job: "Novice", direction: 0, action: "idle", actionAt: Date.now() };
     players.set(socket.id, p);
     socket.join(p.zone);
     socket.emit("joined", { player: publicPlayer(p), zones });
