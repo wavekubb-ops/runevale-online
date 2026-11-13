@@ -96,8 +96,8 @@ io.on("connection", socket => {
     const p = players.get(socket.id);
     if (!p) return;
     const skillBook = {
-      Knight: { key: "bash", name: "Bash", mp: 20, damage: 18, cooldown: 1800, range: 115, effect: "slash" },
-      Wizard: { key: "firebolt", name: "Fire Bolt", mp: 25, damage: 24, cooldown: 2200, range: 260, effect: "fire" },
+      Knight: p.skillBranch === "defense" ? { key: "shield-bash", name: "Shield Bash", mp: 18, damage: 14, perLevel: 4, cooldown: 2000, range: 110, effect: "shield" } : { key: "bash", name: "Bash", mp: 20, damage: 18, perLevel: 5, cooldown: 1800, range: 115, effect: "slash" },
+      Wizard: p.skillBranch === "ice" ? { key: "icebolt", name: "Ice Bolt", mp: 25, damage: 22, perLevel: 6, cooldown: 2200, range: 260, effect: "ice" } : { key: "firebolt", name: "Fire Bolt", mp: 25, damage: 24, perLevel: 6, cooldown: 2200, range: 260, effect: "fire" },
       Hunter: { key: "double-strafe", name: "Double Strafe", mp: 18, damage: 12, hits: 2, cooldown: 2000, range: 240, effect: "arrow" },
       Assassin: { key: "sonic-blow", name: "Sonic Blow", mp: 30, damage: 32, cooldown: 2600, range: 105, effect: "sonic" }
     };
@@ -146,10 +146,23 @@ io.on("connection", socket => {
   });
 
 
+  socket.on("chooseBranch", branch => {
+    const p = players.get(socket.id);
+    if (!p) return;
+    const choices = { Knight: ["sword", "defense"], Wizard: ["fire", "ice"] };
+    if (!choices[p.job] || !choices[p.job].includes(branch)) {
+      socket.emit("branchResult", { ok: false, message: "สายสกิลนี้ไม่ตรงกับอาชีพของคุณ" });
+      return;
+    }
+    p.skillBranch = branch;
+    socket.emit("branchResult", { ok: true, branch, skillBranch: branch });
+    sendZone(p.zone);
+  });
+
   socket.on("upgradeSkill", skillKey => {
     const p = players.get(socket.id);
     if (!p) return;
-    const classSkill = { Knight: "bash", Wizard: "firebolt", Hunter: "double-strafe", Assassin: "sonic-blow" }[p.job];
+    const classSkill = p.job === "Knight" ? (p.skillBranch === "defense" ? "shield-bash" : "bash") : p.job === "Wizard" ? (p.skillBranch === "ice" ? "icebolt" : "firebolt") : ({ Hunter: "double-strafe", Assassin: "sonic-blow" }[p.job]);
     if (!classSkill || skillKey !== classSkill) {
       socket.emit("skillUpgradeResult", { ok: false, message: "สกิลนี้ไม่ใช่ของอาชีพคุณ" });
       return;
